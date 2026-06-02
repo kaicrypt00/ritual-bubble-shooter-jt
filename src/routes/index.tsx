@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useCallback, useEffect } from "react";
+import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { GameCanvas } from "@/components/game/GameCanvas";
 import { Leaderboard } from "@/components/game/Leaderboard";
 
@@ -10,9 +10,16 @@ import {
 } from "@/lib/leaderboard.functions";
 import { sfx, unlockAudio, TRACKS, type TrackId, getCurrentTrack, setTrack } from "@/game/audio";
 import { preloadGameAssets } from "@/game/preload";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useSwitchChain, useWriteContract, useReadContract } from "wagmi";
-import { CONTRACT_ADDRESS, CONTRACT_ABI } from "@/lib/contract";
+
+const WalletAddressSync = lazy(() =>
+  import("@/components/game/Web3GameControls").then((module) => ({ default: module.WalletAddressSync })),
+);
+const ConnectWalletPanel = lazy(() =>
+  import("@/components/game/Web3GameControls").then((module) => ({ default: module.ConnectWalletPanel })),
+);
+const ChainSubmitSection = lazy(() =>
+  import("@/components/game/Web3GameControls").then((module) => ({ default: module.ChainSubmitSection })),
+);
 
 export const Route = createFileRoute("/")({
   ssr: false,
@@ -35,8 +42,6 @@ export const Route = createFileRoute("/")({
 });
 
 type Phase = "home" | "connect-wallet" | "menu" | "leaderboard" | "play" | "over";
-
-const RITUAL_CHAIN_ID = 1979;
 const USERNAME_STORAGE_KEY = "ritual_bubble_username";
 const USERNAME_REGISTRY_KEY = "ritual_bubble_username_registry";
 
@@ -100,17 +105,11 @@ function Index() {
   const [usernameLocked, setUsernameLocked] = useState(false);
   const [gameToken, setGameToken] = useState<string | null>(null);
 
-  const { address } = useAccount();
   const [walletAddress, setWalletAddress] = useState("");
   const [walletManageMode, setWalletManageMode] = useState(false);
   const [localShots, setLocalShots] = useState(0);
   const [localBursts, setLocalBursts] = useState(0);
   const txCount = localShots + localBursts;
-
-  useEffect(() => {
-    if (address) setWalletAddress(address);
-    else setWalletAddress("");
-  }, [address]);
 
   // Restore locked username from previous session
   useEffect(() => {
@@ -205,17 +204,22 @@ function Index() {
 
   return (
     <main className="min-h-[100dvh] w-full flex flex-col items-center justify-center px-3 py-4 relative overflow-hidden">
+      <Suspense fallback={null}>
+        <WalletAddressSync onAddressChange={setWalletAddress} />
+      </Suspense>
       <div aria-hidden className="grid-bg" />
       <FloatingOrbs count={12} />
 
       {phase === "home" && <HomeScreen onAccepted={onUsernameAccepted} />}
 
       {phase === "connect-wallet" && (
-        <ConnectWalletScreen
-          manageMode={walletManageMode}
-          onReady={() => { setWalletManageMode(false); setPhase("menu"); }}
-          onSkip={() => { setWalletManageMode(false); setPhase("menu"); }}
-        />
+        <Suspense fallback={<div className="terminal-panel max-w-md text-center text-[#BF00FF] font-mono uppercase tracking-widest text-xs">loading wallet…</div>}>
+          <ConnectWalletPanel
+            manageMode={walletManageMode}
+            onReady={() => { setWalletManageMode(false); setPhase("menu"); }}
+            onSkip={() => { setWalletManageMode(false); setPhase("menu"); }}
+          />
+        </Suspense>
       )}
 
       {phase === "menu" && (
