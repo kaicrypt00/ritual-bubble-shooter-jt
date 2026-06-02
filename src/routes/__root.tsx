@@ -76,19 +76,11 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   return (
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider
-          theme={darkTheme({
-            accentColor: "#BF00FF",
-            accentColorForeground: "#0a0f0a",
-            borderRadius: "small",
-            fontStack: "system",
-          })}
-        >
-          <Outlet />
-        </RainbowKitProvider>
-      </QueryClientProvider>
-    </WagmiProvider>
+    <ClientOnly fallback={<Outlet />}>
+      <Web3Providers>
+        <Outlet />
+      </Web3Providers>
+    </ClientOnly>
   );
 }
+
