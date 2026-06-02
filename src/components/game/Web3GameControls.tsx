@@ -1,11 +1,18 @@
-import { useEffect, useState } from "react";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useReadContract, useSwitchChain, useWriteContract } from "wagmi";
+import { useCallback, useEffect, useState } from "react";
+import { createPublicClient, createWalletClient, custom, http, type Address } from "viem";
 
 import { sfx } from "@/game/audio";
 import { CONTRACT_ABI, CONTRACT_ADDRESS } from "@/lib/contract";
+import { ritualTestnet } from "@/lib/ritual-chain";
 
 const RITUAL_CHAIN_ID = 1979;
+const RITUAL_CHAIN_HEX = `0x${RITUAL_CHAIN_ID.toString(16)}`;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+const publicClient = createPublicClient({
+  chain: ritualTestnet,
+  transport: http(ritualTestnet.rpcUrls.default.http[0]),
+});
 
 function shortAddr(a: string) {
   if (!a || a.length < 10) return a;
@@ -14,10 +21,89 @@ function shortAddr(a: string) {
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  on?: (event: string, listener: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
 };
 
+function getEthereum() {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { ethereum?: EthereumProvider }).ethereum;
+}
+
+async function getAccounts() {
+  const eth = getEthereum();
+  if (!eth) return [];
+  return (await eth.request({ method: "eth_accounts" })) as Address[];
+}
+
+async function getChainId() {
+  const eth = getEthereum();
+  if (!eth) return undefined;
+  const chainId = (await eth.request({ method: "eth_chainId" })) as string;
+  return Number.parseInt(chainId, 16);
+}
+
+async function addRitualChain() {
+  const eth = getEthereum();
+  if (!eth) return;
+  await eth.request({
+    method: "wallet_addEthereumChain",
+    params: [
+      {
+        chainId: RITUAL_CHAIN_HEX,
+        chainName: "Ritual Testnet",
+        nativeCurrency: { name: "Ritual", symbol: "RITUAL", decimals: 18 },
+        rpcUrls: ["https://rpc.ritualfoundation.org"],
+        blockExplorerUrls: ["https://explorer.ritualfoundation.org"],
+      },
+    ],
+  });
+}
+
+async function switchToRitualChain() {
+  const eth = getEthereum();
+  if (!eth) return;
+  try {
+    await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: RITUAL_CHAIN_HEX }] });
+  } catch (error) {
+    const code = (error as { code?: number }).code;
+    if (code === 4902 || code === -32603) {
+      await addRitualChain();
+      return;
+    }
+    throw error;
+  }
+}
+
+function useWalletState() {
+  const [address, setAddress] = useState<Address | undefined>();
+  const [chainId, setChainId] = useState<number | undefined>();
+
+  const refresh = useCallback(async () => {
+    const [accounts, nextChainId] = await Promise.all([getAccounts(), getChainId()]);
+    setAddress(accounts[0]);
+    setChainId(nextChainId);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const eth = getEthereum();
+    if (!eth?.on) return;
+    const onAccountsChanged = (accounts: unknown) => setAddress((accounts as Address[])[0]);
+    const onChainChanged = (nextChainId: unknown) => setChainId(Number.parseInt(nextChainId as string, 16));
+    eth.on("accountsChanged", onAccountsChanged);
+    eth.on("chainChanged", onChainChanged);
+    return () => {
+      eth.removeListener?.("accountsChanged", onAccountsChanged);
+      eth.removeListener?.("chainChanged", onChainChanged);
+    };
+  }, [refresh]);
+
+  return { address, chainId, refresh };
+}
+
 export function WalletAddressSync({ onAddressChange }: { onAddressChange: (address: string) => void }) {
-  const { address } = useAccount();
+  const { address } = useWalletState();
 
   useEffect(() => {
     onAddressChange(address ?? "");
@@ -35,47 +121,55 @@ export function ConnectWalletPanel({
   onSkip: () => void;
   manageMode?: boolean;
 }) {
-  const { isConnected, chain } = useAccount();
-  const { switchChain, isPending: switching, error: switchError } = useSwitchChain();
+  const { address, chainId, refresh } = useWalletState();
+  const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  const isConnected = Boolean(address);
 
   const handleSwitch = async () => {
+    setSwitching(true);
+    setSwitchError(null);
     try {
-      switchChain({ chainId: RITUAL_CHAIN_ID });
+      await switchToRitualChain();
+      await refresh();
     } catch (e) {
-      console.error("switchChain failed", e);
+      console.error("switchToRitualChain failed", e);
+      setSwitchError(e instanceof Error ? e.message : "Unable to switch network");
+    } finally {
+      setSwitching(false);
     }
+  };
 
-    setTimeout(async () => {
-      const eth = (window as unknown as { ethereum?: EthereumProvider }).ethereum;
-      if (!eth) return;
-      try {
-        await eth.request({
-          method: "wallet_addEthereumChain",
-          params: [
-            {
-              chainId: `0x${RITUAL_CHAIN_ID.toString(16)}`,
-              chainName: "Ritual Testnet",
-              nativeCurrency: { name: "Ritual", symbol: "RITUAL", decimals: 18 },
-              rpcUrls: ["https://rpc.ritualfoundation.org"],
-              blockExplorerUrls: ["https://explorer.ritualfoundation.org"],
-            },
-          ],
-        });
-      } catch (e) {
-        console.error("wallet_addEthereumChain failed", e);
-      }
-    }, 300);
+  const handleConnect = async () => {
+    const eth = getEthereum();
+    if (!eth) {
+      setSwitchError("No browser wallet found. Install MetaMask or another injected wallet.");
+      return;
+    }
+    setSwitching(true);
+    setSwitchError(null);
+    try {
+      await eth.request({ method: "eth_requestAccounts" });
+      await switchToRitualChain();
+      await refresh();
+    } catch (e) {
+      console.error("wallet connect failed", e);
+      setSwitchError(e instanceof Error ? e.message : "Wallet request was rejected");
+      await refresh();
+    } finally {
+      setSwitching(false);
+    }
   };
 
   useEffect(() => {
     if (manageMode) return;
-    if (isConnected && chain?.id === RITUAL_CHAIN_ID) {
+    if (isConnected && chainId === RITUAL_CHAIN_ID) {
       const t = setTimeout(onReady, 500);
       return () => clearTimeout(t);
     }
-  }, [isConnected, chain?.id, onReady, manageMode]);
+  }, [isConnected, chainId, onReady, manageMode]);
 
-  const wrongNetwork = isConnected && chain?.id !== RITUAL_CHAIN_ID;
+  const wrongNetwork = isConnected && chainId !== RITUAL_CHAIN_ID;
 
   return (
     <div className="terminal-panel max-w-md">
@@ -97,7 +191,13 @@ export function ConnectWalletPanel({
       <div className="glow-line" />
 
       <div className="flex justify-center my-4">
-        <ConnectButton showBalance={false} chainStatus="icon" />
+        <button
+          onClick={isConnected ? handleSwitch : handleConnect}
+          disabled={switching}
+          className="px-5 py-2 rounded border border-[#BF00FF] text-[#BF00FF] font-mono uppercase tracking-widest text-xs hover:bg-[rgba(191,0,255,0.1)] hover:shadow-[0_0_15px_#BF00FF] transition disabled:opacity-50"
+        >
+          {switching ? "Wallet request…" : address ? `⬡ ${shortAddr(address)}` : "Connect Wallet"}
+        </button>
       </div>
 
       {wrongNetwork && (
@@ -114,19 +214,25 @@ export function ConnectWalletPanel({
           </button>
           {switchError && (
             <div className="text-[#ff5577] font-mono text-[10px] mt-2 opacity-80">
-              {switchError.message.slice(0, 120)}
+              {switchError.slice(0, 120)}
             </div>
           )}
         </div>
       )}
 
-      {isConnected && chain?.id === RITUAL_CHAIN_ID && !manageMode && (
+      {!wrongNetwork && switchError && (
+        <div className="text-[#ff5577] font-mono text-[10px] mt-2 text-center opacity-80">
+          {switchError.slice(0, 120)}
+        </div>
+      )}
+
+      {isConnected && chainId === RITUAL_CHAIN_ID && !manageMode && (
         <div className="mt-3 text-center text-[#BF00FF] font-mono text-[12px] uppercase tracking-widest">
           ✓ Connected to Ritual — entering…
         </div>
       )}
 
-      {isConnected && chain?.id === RITUAL_CHAIN_ID && manageMode && (
+      {isConnected && chainId === RITUAL_CHAIN_ID && manageMode && (
         <div className="mt-3 text-center text-[#BF00FF] font-mono text-[12px] uppercase tracking-widest">
           ✓ Connected to Ritual
         </div>
@@ -153,14 +259,28 @@ type OnChainEntry = {
 };
 
 export function OnChainLeaderboardPanel({ highlightAddr }: { highlightAddr: string }) {
-  const { data, isLoading, refetch } = useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: "getLeaderboard",
-    chainId: RITUAL_CHAIN_ID,
-  });
+  const [data, setData] = useState<readonly [readonly OnChainEntry[], number] | undefined>();
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const result = await publicClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "getLeaderboard",
+      });
+      setData(result as readonly [readonly OnChainEntry[], number]);
+    } catch (error) {
+      console.error("getLeaderboard failed", error);
+      setData(undefined);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
+    void refetch();
     const t = setTimeout(() => refetch(), 1500);
     return () => clearTimeout(t);
   }, [refetch]);
@@ -173,7 +293,7 @@ export function OnChainLeaderboardPanel({ highlightAddr }: { highlightAddr: stri
     );
   }
 
-  const tuple = data as readonly [readonly OnChainEntry[], number] | undefined;
+  const tuple = data;
   if (!tuple) {
     return (
       <div className="text-center font-mono text-xs text-[#BF00FF]/60 py-4">
@@ -242,20 +362,41 @@ export function ChainSubmitSection({
   bursts: number;
   onLeaderboardVisibleChange: (visible: boolean) => void;
 }) {
-  const { writeContract, isPending, isSuccess, isError, reset } = useWriteContract();
+  const [isPending, setIsPending] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [isError, setIsError] = useState(false);
   const [submittedOnce, setSubmittedOnce] = useState(false);
 
-  const onSubmitChain = () => {
+  const onSubmitChain = async () => {
     if (!walletAddress) return;
     sfx.click();
     setSubmittedOnce(true);
-    writeContract({
-      address: CONTRACT_ADDRESS,
-      abi: CONTRACT_ABI,
-      functionName: "submitGame",
-      args: [username, BigInt(score), BigInt(shots), BigInt(bursts)],
-      chainId: RITUAL_CHAIN_ID,
-    });
+    setIsPending(true);
+    setIsSuccess(false);
+    setIsError(false);
+    try {
+      await switchToRitualChain();
+      const eth = getEthereum();
+      if (!eth) throw new Error("No browser wallet found");
+      const walletClient = createWalletClient({
+        account: walletAddress as Address,
+        chain: ritualTestnet,
+        transport: custom(eth),
+      });
+      const hash = await walletClient.writeContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "submitGame",
+        args: [username, BigInt(score), BigInt(shots), BigInt(bursts)],
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      setIsSuccess(true);
+    } catch (error) {
+      console.error("submitGame failed", error);
+      setIsError(true);
+    } finally {
+      setIsPending(false);
+    }
   };
 
   let btnLabel = "⬡ SUBMIT TO RITUAL";
@@ -267,8 +408,6 @@ export function ChainSubmitSection({
   useEffect(() => {
     onLeaderboardVisibleChange(isSuccess || submittedOnce);
   }, [isSuccess, submittedOnce, onLeaderboardVisibleChange]);
-
-  useEffect(() => () => reset(), [reset]);
 
   return (
     <>

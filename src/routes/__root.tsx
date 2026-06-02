@@ -1,11 +1,6 @@
-import "@rainbow-me/rainbowkit/styles.css";
-import { Outlet, Link, createRootRoute, HeadContent, Scripts, ClientOnly } from "@tanstack/react-router";
-import { lazy } from "react";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
-
-const Web3Providers = lazy(() => import("@/components/Web3Providers"));
-
 
 function NotFoundComponent() {
   return (
@@ -75,12 +70,6 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return (
-    <ClientOnly fallback={<Outlet />}>
-      <Web3Providers>
-        <Outlet />
-      </Web3Providers>
-    </ClientOnly>
-  );
+  return <Outlet />;
 }
 
