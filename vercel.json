@@ -6,7 +6,6 @@
   "framework": null,
   "functions": {
     "api/[...all].ts": {
-      "runtime": "@vercel/node@5.1.16",
       "includeFiles": "dist/server/**",
       "maxDuration": 30
     }
