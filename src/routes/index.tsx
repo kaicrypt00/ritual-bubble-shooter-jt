@@ -20,6 +20,9 @@ const ConnectWalletPanel = lazy(() =>
 const ChainSubmitSection = lazy(() =>
   import("@/components/game/Web3GameControls").then((module) => ({ default: module.ChainSubmitSection })),
 );
+const OnChainLeaderboardPanel = lazy(() =>
+  import("@/components/game/Web3GameControls").then((module) => ({ default: module.OnChainLeaderboardPanel })),
+);
 
 export const Route = createFileRoute("/")({
   ssr: false,
@@ -522,6 +525,7 @@ function GameOverScreen({
   onHome: () => void;
 }) {
   const txCount = shots + bursts;
+  const [showOnChainLeaderboard, setShowOnChainLeaderboard] = useState(false);
 
   return (
     <div className="w-full max-w-md flex flex-col items-center gap-6 z-10 py-8">
@@ -564,6 +568,7 @@ function GameOverScreen({
             score={score}
             shots={shots}
             bursts={bursts}
+            onLeaderboardVisibleChange={setShowOnChainLeaderboard}
           />
         </Suspense>
       </div>
@@ -587,6 +592,12 @@ function GameOverScreen({
         </div>
       ) : (
         <Leaderboard key={`${username}-${score}-${rank ?? "none"}`} highlight={username} />
+      )}
+
+      {walletAddress && showOnChainLeaderboard && (
+        <Suspense fallback={<div className="text-center font-mono text-xs text-[#BF00FF]/60 py-4">loading on-chain leaderboard…</div>}>
+          <OnChainLeaderboardPanel highlightAddr={walletAddress} />
+        </Suspense>
       )}
     </div>
   );
