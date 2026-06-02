@@ -259,14 +259,28 @@ type OnChainEntry = {
 };
 
 export function OnChainLeaderboardPanel({ highlightAddr }: { highlightAddr: string }) {
-  const { data, isLoading, refetch } = useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: "getLeaderboard",
-    chainId: RITUAL_CHAIN_ID,
-  });
+  const [data, setData] = useState<readonly [readonly OnChainEntry[], number] | undefined>();
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refetch = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const result = await publicClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "getLeaderboard",
+      });
+      setData(result as readonly [readonly OnChainEntry[], number]);
+    } catch (error) {
+      console.error("getLeaderboard failed", error);
+      setData(undefined);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
+    void refetch();
     const t = setTimeout(() => refetch(), 1500);
     return () => clearTimeout(t);
   }, [refetch]);
@@ -279,7 +293,7 @@ export function OnChainLeaderboardPanel({ highlightAddr }: { highlightAddr: stri
     );
   }
 
-  const tuple = data as readonly [readonly OnChainEntry[], number] | undefined;
+  const tuple = data;
   if (!tuple) {
     return (
       <div className="text-center font-mono text-xs text-[#BF00FF]/60 py-4">
@@ -348,20 +362,41 @@ export function ChainSubmitSection({
   bursts: number;
   onLeaderboardVisibleChange: (visible: boolean) => void;
 }) {
-  const { writeContract, isPending, isSuccess, isError, reset } = useWriteContract();
+  const [isPending, setIsPending] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [isError, setIsError] = useState(false);
   const [submittedOnce, setSubmittedOnce] = useState(false);
 
-  const onSubmitChain = () => {
+  const onSubmitChain = async () => {
     if (!walletAddress) return;
     sfx.click();
     setSubmittedOnce(true);
-    writeContract({
-      address: CONTRACT_ADDRESS,
-      abi: CONTRACT_ABI,
-      functionName: "submitGame",
-      args: [username, BigInt(score), BigInt(shots), BigInt(bursts)],
-      chainId: RITUAL_CHAIN_ID,
-    });
+    setIsPending(true);
+    setIsSuccess(false);
+    setIsError(false);
+    try {
+      await switchToRitualChain();
+      const eth = getEthereum();
+      if (!eth) throw new Error("No browser wallet found");
+      const walletClient = createWalletClient({
+        account: walletAddress as Address,
+        chain: ritualTestnet,
+        transport: custom(eth),
+      });
+      const hash = await walletClient.writeContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: "submitGame",
+        args: [username, BigInt(score), BigInt(shots), BigInt(bursts)],
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      setIsSuccess(true);
+    } catch (error) {
+      console.error("submitGame failed", error);
+      setIsError(true);
+    } finally {
+      setIsPending(false);
+    }
   };
 
   let btnLabel = "⬡ SUBMIT TO RITUAL";
@@ -373,8 +408,6 @@ export function ChainSubmitSection({
   useEffect(() => {
     onLeaderboardVisibleChange(isSuccess || submittedOnce);
   }, [isSuccess, submittedOnce, onLeaderboardVisibleChange]);
-
-  useEffect(() => () => reset(), [reset]);
 
   return (
     <>
