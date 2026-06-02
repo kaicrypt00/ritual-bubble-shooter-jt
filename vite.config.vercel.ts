@@ -8,6 +8,11 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
   cloudflare: false,
+  vite: {
+    resolve: {
+      alias: [{ find: /^@walletconnect\/time$/, replacement: "@walletconnect/time/dist/esm/index.js" }],
+    },
+  },
   tanstackStart: {
     server: { entry: "server" },
   },
