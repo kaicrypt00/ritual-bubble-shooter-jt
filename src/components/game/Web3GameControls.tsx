@@ -1,11 +1,18 @@
-import { useEffect, useState } from "react";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useReadContract, useSwitchChain, useWriteContract } from "wagmi";
+import { useCallback, useEffect, useState } from "react";
+import { createPublicClient, createWalletClient, custom, http, type Address } from "viem";
 
 import { sfx } from "@/game/audio";
 import { CONTRACT_ABI, CONTRACT_ADDRESS } from "@/lib/contract";
+import { ritualTestnet } from "@/lib/ritual-chain";
 
 const RITUAL_CHAIN_ID = 1979;
+const RITUAL_CHAIN_HEX = `0x${RITUAL_CHAIN_ID.toString(16)}`;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+const publicClient = createPublicClient({
+  chain: ritualTestnet,
+  transport: http(ritualTestnet.rpcUrls.default.http[0]),
+});
 
 function shortAddr(a: string) {
   if (!a || a.length < 10) return a;
@@ -14,10 +21,89 @@ function shortAddr(a: string) {
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  on?: (event: string, listener: (...args: unknown[]) => void) => void;
+  removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
 };
 
+function getEthereum() {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { ethereum?: EthereumProvider }).ethereum;
+}
+
+async function getAccounts() {
+  const eth = getEthereum();
+  if (!eth) return [];
+  return (await eth.request({ method: "eth_accounts" })) as Address[];
+}
+
+async function getChainId() {
+  const eth = getEthereum();
+  if (!eth) return undefined;
+  const chainId = (await eth.request({ method: "eth_chainId" })) as string;
+  return Number.parseInt(chainId, 16);
+}
+
+async function addRitualChain() {
+  const eth = getEthereum();
+  if (!eth) return;
+  await eth.request({
+    method: "wallet_addEthereumChain",
+    params: [
+      {
+        chainId: RITUAL_CHAIN_HEX,
+        chainName: "Ritual Testnet",
+        nativeCurrency: { name: "Ritual", symbol: "RITUAL", decimals: 18 },
+        rpcUrls: ["https://rpc.ritualfoundation.org"],
+        blockExplorerUrls: ["https://explorer.ritualfoundation.org"],
+      },
+    ],
+  });
+}
+
+async function switchToRitualChain() {
+  const eth = getEthereum();
+  if (!eth) return;
+  try {
+    await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: RITUAL_CHAIN_HEX }] });
+  } catch (error) {
+    const code = (error as { code?: number }).code;
+    if (code === 4902 || code === -32603) {
+      await addRitualChain();
+      return;
+    }
+    throw error;
+  }
+}
+
+function useWalletState() {
+  const [address, setAddress] = useState<Address | undefined>();
+  const [chainId, setChainId] = useState<number | undefined>();
+
+  const refresh = useCallback(async () => {
+    const [accounts, nextChainId] = await Promise.all([getAccounts(), getChainId()]);
+    setAddress(accounts[0]);
+    setChainId(nextChainId);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const eth = getEthereum();
+    if (!eth?.on) return;
+    const onAccountsChanged = (accounts: unknown) => setAddress((accounts as Address[])[0]);
+    const onChainChanged = (nextChainId: unknown) => setChainId(Number.parseInt(nextChainId as string, 16));
+    eth.on("accountsChanged", onAccountsChanged);
+    eth.on("chainChanged", onChainChanged);
+    return () => {
+      eth.removeListener?.("accountsChanged", onAccountsChanged);
+      eth.removeListener?.("chainChanged", onChainChanged);
+    };
+  }, [refresh]);
+
+  return { address, chainId, refresh };
+}
+
 export function WalletAddressSync({ onAddressChange }: { onAddressChange: (address: string) => void }) {
-  const { address } = useAccount();
+  const { address } = useWalletState();
 
   useEffect(() => {
     onAddressChange(address ?? "");
