@@ -152,7 +152,7 @@ type OnChainEntry = {
   bursts: bigint;
 };
 
-function OnChainLeaderboard({ highlightAddr }: { highlightAddr: string }) {
+export function OnChainLeaderboardPanel({ highlightAddr }: { highlightAddr: string }) {
   const { data, isLoading, refetch } = useReadContract({
     address: CONTRACT_ADDRESS,
     abi: CONTRACT_ABI,
@@ -233,12 +233,14 @@ export function ChainSubmitSection({
   score,
   shots,
   bursts,
+  onLeaderboardVisibleChange,
 }: {
   walletAddress: string;
   username: string;
   score: number;
   shots: number;
   bursts: number;
+  onLeaderboardVisibleChange: (visible: boolean) => void;
 }) {
   const { writeContract, isPending, isSuccess, isError, reset } = useWriteContract();
   const [submittedOnce, setSubmittedOnce] = useState(false);
@@ -262,6 +264,10 @@ export function ChainSubmitSection({
   else if (isSuccess) { btnLabel = "✓ SUBMITTED ON-CHAIN"; btnDisabled = true; }
   else if (isError) { btnLabel = "NOT SUBMITTED — TRY AGAIN"; }
 
+  useEffect(() => {
+    onLeaderboardVisibleChange(isSuccess || submittedOnce);
+  }, [isSuccess, submittedOnce, onLeaderboardVisibleChange]);
+
   useEffect(() => () => reset(), [reset]);
 
   return (
@@ -282,10 +288,6 @@ export function ChainSubmitSection({
           </div>
         )}
       </div>
-
-      {walletAddress && (isSuccess || submittedOnce) && (
-        <OnChainLeaderboard highlightAddr={walletAddress} />
-      )}
     </>
   );
 }
