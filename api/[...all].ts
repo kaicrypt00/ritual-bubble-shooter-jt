@@ -7,6 +7,7 @@
 // so this file adapts Node req/res <-> Web Request/Response explicitly.
 import path from "node:path";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 export const config = {
@@ -64,12 +65,7 @@ async function sendWebResponse(res: ServerResponse, webResponse: Response) {
   }
 
   const body = Readable.fromWeb(webResponse.body as import("node:stream/web").ReadableStream);
-  body.on("error", (error) => {
-    console.error(error);
-    if (!res.headersSent) res.statusCode = 500;
-    res.end();
-  });
-  body.pipe(res);
+  await pipeline(body, res);
 }
 
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
