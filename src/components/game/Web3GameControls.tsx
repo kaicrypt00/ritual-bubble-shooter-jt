@@ -121,47 +121,55 @@ export function ConnectWalletPanel({
   onSkip: () => void;
   manageMode?: boolean;
 }) {
-  const { isConnected, chain } = useAccount();
-  const { switchChain, isPending: switching, error: switchError } = useSwitchChain();
+  const { address, chainId, refresh } = useWalletState();
+  const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
+  const isConnected = Boolean(address);
 
   const handleSwitch = async () => {
+    setSwitching(true);
+    setSwitchError(null);
     try {
-      switchChain({ chainId: RITUAL_CHAIN_ID });
+      await switchToRitualChain();
+      await refresh();
     } catch (e) {
-      console.error("switchChain failed", e);
+      console.error("switchToRitualChain failed", e);
+      setSwitchError(e instanceof Error ? e.message : "Unable to switch network");
+    } finally {
+      setSwitching(false);
     }
+  };
 
-    setTimeout(async () => {
-      const eth = (window as unknown as { ethereum?: EthereumProvider }).ethereum;
-      if (!eth) return;
-      try {
-        await eth.request({
-          method: "wallet_addEthereumChain",
-          params: [
-            {
-              chainId: `0x${RITUAL_CHAIN_ID.toString(16)}`,
-              chainName: "Ritual Testnet",
-              nativeCurrency: { name: "Ritual", symbol: "RITUAL", decimals: 18 },
-              rpcUrls: ["https://rpc.ritualfoundation.org"],
-              blockExplorerUrls: ["https://explorer.ritualfoundation.org"],
-            },
-          ],
-        });
-      } catch (e) {
-        console.error("wallet_addEthereumChain failed", e);
-      }
-    }, 300);
+  const handleConnect = async () => {
+    const eth = getEthereum();
+    if (!eth) {
+      setSwitchError("No browser wallet found. Install MetaMask or another injected wallet.");
+      return;
+    }
+    setSwitching(true);
+    setSwitchError(null);
+    try {
+      await eth.request({ method: "eth_requestAccounts" });
+      await switchToRitualChain();
+      await refresh();
+    } catch (e) {
+      console.error("wallet connect failed", e);
+      setSwitchError(e instanceof Error ? e.message : "Wallet request was rejected");
+      await refresh();
+    } finally {
+      setSwitching(false);
+    }
   };
 
   useEffect(() => {
     if (manageMode) return;
-    if (isConnected && chain?.id === RITUAL_CHAIN_ID) {
+    if (isConnected && chainId === RITUAL_CHAIN_ID) {
       const t = setTimeout(onReady, 500);
       return () => clearTimeout(t);
     }
-  }, [isConnected, chain?.id, onReady, manageMode]);
+  }, [isConnected, chainId, onReady, manageMode]);
 
-  const wrongNetwork = isConnected && chain?.id !== RITUAL_CHAIN_ID;
+  const wrongNetwork = isConnected && chainId !== RITUAL_CHAIN_ID;
 
   return (
     <div className="terminal-panel max-w-md">
@@ -183,7 +191,13 @@ export function ConnectWalletPanel({
       <div className="glow-line" />
 
       <div className="flex justify-center my-4">
-        <ConnectButton showBalance={false} chainStatus="icon" />
+        <button
+          onClick={isConnected ? handleSwitch : handleConnect}
+          disabled={switching}
+          className="px-5 py-2 rounded border border-[#BF00FF] text-[#BF00FF] font-mono uppercase tracking-widest text-xs hover:bg-[rgba(191,0,255,0.1)] hover:shadow-[0_0_15px_#BF00FF] transition disabled:opacity-50"
+        >
+          {switching ? "Wallet request…" : address ? `⬡ ${shortAddr(address)}` : "Connect Wallet"}
+        </button>
       </div>
 
       {wrongNetwork && (
@@ -200,19 +214,25 @@ export function ConnectWalletPanel({
           </button>
           {switchError && (
             <div className="text-[#ff5577] font-mono text-[10px] mt-2 opacity-80">
-              {switchError.message.slice(0, 120)}
+              {switchError.slice(0, 120)}
             </div>
           )}
         </div>
       )}
 
-      {isConnected && chain?.id === RITUAL_CHAIN_ID && !manageMode && (
+      {!wrongNetwork && switchError && (
+        <div className="text-[#ff5577] font-mono text-[10px] mt-2 text-center opacity-80">
+          {switchError.slice(0, 120)}
+        </div>
+      )}
+
+      {isConnected && chainId === RITUAL_CHAIN_ID && !manageMode && (
         <div className="mt-3 text-center text-[#BF00FF] font-mono text-[12px] uppercase tracking-widest">
           ✓ Connected to Ritual — entering…
         </div>
       )}
 
-      {isConnected && chain?.id === RITUAL_CHAIN_ID && manageMode && (
+      {isConnected && chainId === RITUAL_CHAIN_ID && manageMode && (
         <div className="mt-3 text-center text-[#BF00FF] font-mono text-[12px] uppercase tracking-widest">
           ✓ Connected to Ritual
         </div>
