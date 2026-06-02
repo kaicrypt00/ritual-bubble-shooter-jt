@@ -1,13 +1,11 @@
 import "@rainbow-me/rainbowkit/styles.css";
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
-import { WagmiProvider } from "wagmi";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
-import { wagmiConfig } from "@/lib/wagmi-config";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts, ClientOnly } from "@tanstack/react-router";
+import { lazy } from "react";
 
 import appCss from "../styles.css?url";
 
-const queryClient = new QueryClient();
+const Web3Providers = lazy(() => import("@/components/Web3Providers"));
+
 
 function NotFoundComponent() {
   return (
