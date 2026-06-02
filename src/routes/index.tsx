@@ -557,23 +557,15 @@ function GameOverScreen({
           as <span className="text-primary/80">{username}</span>
         </div>
 
-        {/* On-chain submit */}
-        <div className="mt-5">
-          {walletAddress ? (
-            <button
-              onClick={onSubmitChain}
-              disabled={btnDisabled}
-              className="w-full py-3 rounded border border-[#BF00FF] text-[#BF00FF] font-mono uppercase tracking-widest text-sm hover:bg-[rgba(191,0,255,0.15)] hover:shadow-[0_0_20px_#BF00FF] transition disabled:opacity-60 disabled:cursor-not-allowed"
-              style={{ textShadow: "0 0 8px #BF00FF" }}
-            >
-              {btnLabel}
-            </button>
-          ) : (
-            <div className="font-mono text-xs text-[#BF00FF]/60 uppercase tracking-widest py-2">
-              Connect wallet to submit score
-            </div>
-          )}
-        </div>
+        <Suspense fallback={<div className="mt-5 font-mono text-xs text-[#BF00FF]/60 uppercase tracking-widest py-2">loading chain submit…</div>}>
+          <ChainSubmitSection
+            walletAddress={walletAddress}
+            username={username}
+            score={score}
+            shots={shots}
+            bursts={bursts}
+          />
+        </Suspense>
       </div>
 
       <div className="flex gap-3 w-full">
@@ -595,11 +587,6 @@ function GameOverScreen({
         </div>
       ) : (
         <Leaderboard key={`${username}-${score}-${rank ?? "none"}`} highlight={username} />
-      )}
-
-      {/* On-chain leaderboard — only after a successful submit */}
-      {walletAddress && (isSuccess || submittedOnce) && (
-        <OnChainLeaderboard highlightAddr={walletAddress} />
       )}
     </div>
   );
