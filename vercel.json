@@ -4,6 +4,12 @@
   "outputDirectory": "dist/client",
   "installCommand": "bun install",
   "framework": null,
+  "functions": {
+    "api/[...all].ts": {
+      "includeFiles": "dist/server/**",
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/all" }
   ]
