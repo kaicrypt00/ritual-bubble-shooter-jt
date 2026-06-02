@@ -14,13 +14,40 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      leaderboard: {
+        Row: {
+          created_at: string
+          id: string
+          score: number
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          score?: number
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          score?: number
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      reserve_username: { Args: { p_username: string }; Returns: boolean }
+      submit_score: {
+        Args: { p_score: number; p_username: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
