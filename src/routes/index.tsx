@@ -15,6 +15,7 @@ import { useAccount, useSwitchChain, useWriteContract, useReadContract } from "w
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from "@/lib/contract";
 
 export const Route = createFileRoute("/")({
+  ssr: false,
   head: () => ({
     meta: [
       { title: "RITUAL BUBBLE SHOOTER — Pop. Match. Ritualize." },
