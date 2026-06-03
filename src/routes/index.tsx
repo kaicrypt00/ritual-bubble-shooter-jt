@@ -115,6 +115,10 @@ function Index() {
 
   const [walletAddress, setWalletAddress] = useState("");
   const [walletManageMode, setWalletManageMode] = useState(false);
+
+  const handleDisconnect = useCallback(() => {
+    setWalletAddress("");
+  }, []);
   const [localShots, setLocalShots] = useState(0);
   const [localBursts, setLocalBursts] = useState(0);
   const txCount = localShots + localBursts;
