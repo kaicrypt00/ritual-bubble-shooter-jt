@@ -72,7 +72,6 @@ export type TrackId = "interstellar" | "winner" | "bamboo" | "burnaboy";
 
 export const TRACKS: { id: TrackId; label: string; src: string }[] = [
   { id: "interstellar", label: "Interstellar", src: "/audio/bgm.mp3" },
-  { id: "winner",       label: "Sunflower",    src: "/audio/sunflower.mp3" },
   { id: "bamboo",       label: "Bamboo Flute", src: "/audio/bamboo-flute.mp3" },
   { id: "burnaboy",     label: "Burna Boy",    src: "/audio/burna-boy.mp3" },
 ];

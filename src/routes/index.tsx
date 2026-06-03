@@ -2,12 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { GameCanvas } from "@/components/game/GameCanvas";
 import { Leaderboard } from "@/components/game/Leaderboard";
+import { supabase } from "@/integrations/supabase/client";
 
-import {
-  issueGameToken,
-  submitScoreSecure,
-  reserveUsernameSecure,
-} from "@/lib/leaderboard.functions";
+import { reserveUsernameSecure } from "@/lib/leaderboard.functions";
 import { sfx, unlockAudio, TRACKS, type TrackId, getCurrentTrack, setTrack } from "@/game/audio";
 import { preloadGameAssets } from "@/game/preload";
 
@@ -76,14 +73,23 @@ function isNameTakenLocally(name: string): boolean {
 async function submitScore(
   username: string,
   score: number,
-  token: string,
 ): Promise<number | null> {
   try {
-    const res = await submitScoreSecure({
-      data: { username, score, token },
+    const client = supabase as any;
+    const safeScore = Math.max(0, Math.min(5500, Math.floor(score)));
+    const { error } = await client.rpc("submit_score", {
+      p_username: username,
+      p_score: safeScore,
     });
-    if (!res.ok) return null;
-    return res.rank ?? null;
+    if (error) return null;
+    const { data: rows } = await client
+      .from("leaderboard")
+      .select("username,score")
+      .order("score", { ascending: false })
+      .limit(20);
+    const idx = ((rows ?? []) as Array<{ username: string; score: number }>)
+      .findIndex((r) => r.username === username);
+    return idx >= 0 ? idx + 1 : null;
   } catch {
     return null;
   }
@@ -106,7 +112,6 @@ function Index() {
   const [submitting, setSubmitting] = useState(false);
   const [gameKey, setGameKey] = useState(0);
   const [usernameLocked, setUsernameLocked] = useState(false);
-  const [gameToken, setGameToken] = useState<string | null>(null);
 
   const [walletAddress, setWalletAddress] = useState("");
   const [walletManageMode, setWalletManageMode] = useState(false);
@@ -141,15 +146,9 @@ function Index() {
     sfx.click();
     setLocalShots(0);
     setLocalBursts(0);
-    setGameToken(null);
     setGameKey((k) => k + 1);
     setPhase("play");
-    // Fetch token in the background — game starts immediately, score
-    // submission just waits on this if it lands late.
-    issueGameToken({ data: { username: username.trim() } })
-      .then((res) => setGameToken(res.token))
-      .catch(() => setGameToken(null));
-  }, [username]);
+  }, []);
 
   const handleGameOver = useCallback(
     async (score: number) => {
@@ -157,27 +156,19 @@ function Index() {
       setSubmitting(true);
       setRank(null);
       setPhase("over");
-      if (!gameToken) {
-        setSubmitting(false);
-        return;
-      }
-      const r = await submitScore(username.trim(), score, gameToken);
+      const r = await submitScore(username.trim(), score);
       setRank(r);
       setSubmitting(false);
     },
-    [username, gameToken],
+    [username],
   );
 
   const handleRestart = useCallback(() => {
     setLocalShots(0);
     setLocalBursts(0);
-    setGameToken(null);
     setGameKey((k) => k + 1);
     setPhase("play");
-    issueGameToken({ data: { username: username.trim() } })
-      .then((res) => setGameToken(res.token))
-      .catch(() => setGameToken(null));
-  }, [username]);
+  }, []);
 
   const handleHome = useCallback(() => {
     setPhase("menu");
@@ -287,7 +278,7 @@ function HomeScreen({ onAccepted }: { onAccepted: (name: string) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const submit = async () => {
+  const submit = () => {
     const name = value.trim();
     if (!name) return;
     if (name.length < 3) {
@@ -300,22 +291,12 @@ function HomeScreen({ onAccepted }: { onAccepted: (name: string) => void }) {
     }
     setBusy(true);
     setError(null);
-    try {
-      const res = await reserveUsernameSecure({ data: { username: name } });
-      if (!res.ok) {
-        if (res.reason === "taken") {
-          setError("Name already exists! Please choose a unique name.");
-          return;
-        }
-        onAccepted(name);
-        return;
-      }
-      onAccepted(name);
-    } catch {
-      onAccepted(name);
-    } finally {
-      setBusy(false);
-    }
+    // Fire reservation in the background — don't block the user on a
+    // serverless cold start. The local registry already prevents same-device
+    // collisions; the server reservation is best-effort de-dup.
+    reserveUsernameSecure({ data: { username: name } }).catch(() => {});
+    onAccepted(name);
+    setBusy(false);
   };
 
   return (
