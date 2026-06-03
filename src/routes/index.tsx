@@ -227,6 +227,7 @@ function Index() {
           onPlay={startGame}
           onLeaderboard={() => { sfx.click(); setPhase("leaderboard"); }}
           onConnect={() => { sfx.click(); setWalletManageMode(true); setPhase("connect-wallet"); }}
+          onDisconnect={handleDisconnect}
         />
       )}
 
