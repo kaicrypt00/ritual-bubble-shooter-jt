@@ -73,14 +73,23 @@ function isNameTakenLocally(name: string): boolean {
 async function submitScore(
   username: string,
   score: number,
-  token: string,
 ): Promise<number | null> {
   try {
-    const res = await submitScoreSecure({
-      data: { username, score, token },
+    const client = supabase as any;
+    const safeScore = Math.max(0, Math.min(5500, Math.floor(score)));
+    const { error } = await client.rpc("submit_score", {
+      p_username: username,
+      p_score: safeScore,
     });
-    if (!res.ok) return null;
-    return res.rank ?? null;
+    if (error) return null;
+    const { data: rows } = await client
+      .from("leaderboard")
+      .select("username,score")
+      .order("score", { ascending: false })
+      .limit(20);
+    const idx = ((rows ?? []) as Array<{ username: string; score: number }>)
+      .findIndex((r) => r.username === username);
+    return idx >= 0 ? idx + 1 : null;
   } catch {
     return null;
   }
