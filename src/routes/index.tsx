@@ -2,12 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { GameCanvas } from "@/components/game/GameCanvas";
 import { Leaderboard } from "@/components/game/Leaderboard";
+import { supabase } from "@/integrations/supabase/client";
 
-import {
-  issueGameToken,
-  submitScoreSecure,
-  reserveUsernameSecure,
-} from "@/lib/leaderboard.functions";
+import { reserveUsernameSecure } from "@/lib/leaderboard.functions";
 import { sfx, unlockAudio, TRACKS, type TrackId, getCurrentTrack, setTrack } from "@/game/audio";
 import { preloadGameAssets } from "@/game/preload";
 
