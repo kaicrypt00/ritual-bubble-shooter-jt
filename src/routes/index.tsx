@@ -112,7 +112,6 @@ function Index() {
   const [submitting, setSubmitting] = useState(false);
   const [gameKey, setGameKey] = useState(0);
   const [usernameLocked, setUsernameLocked] = useState(false);
-  const [gameToken, setGameToken] = useState<string | null>(null);
 
   const [walletAddress, setWalletAddress] = useState("");
   const [walletManageMode, setWalletManageMode] = useState(false);
@@ -147,15 +146,9 @@ function Index() {
     sfx.click();
     setLocalShots(0);
     setLocalBursts(0);
-    setGameToken(null);
     setGameKey((k) => k + 1);
     setPhase("play");
-    // Fetch token in the background — game starts immediately, score
-    // submission just waits on this if it lands late.
-    issueGameToken({ data: { username: username.trim() } })
-      .then((res) => setGameToken(res.token))
-      .catch(() => setGameToken(null));
-  }, [username]);
+  }, []);
 
   const handleGameOver = useCallback(
     async (score: number) => {
@@ -163,27 +156,19 @@ function Index() {
       setSubmitting(true);
       setRank(null);
       setPhase("over");
-      if (!gameToken) {
-        setSubmitting(false);
-        return;
-      }
-      const r = await submitScore(username.trim(), score, gameToken);
+      const r = await submitScore(username.trim(), score);
       setRank(r);
       setSubmitting(false);
     },
-    [username, gameToken],
+    [username],
   );
 
   const handleRestart = useCallback(() => {
     setLocalShots(0);
     setLocalBursts(0);
-    setGameToken(null);
     setGameKey((k) => k + 1);
     setPhase("play");
-    issueGameToken({ data: { username: username.trim() } })
-      .then((res) => setGameToken(res.token))
-      .catch(() => setGameToken(null));
-  }, [username]);
+  }, []);
 
   const handleHome = useCallback(() => {
     setPhase("menu");
