@@ -354,12 +354,14 @@ function MenuScreen({
   onPlay,
   onLeaderboard,
   onConnect,
+  onDisconnect,
 }: {
   username: string;
   walletAddress: string;
   onPlay: () => void;
   onLeaderboard: () => void;
   onConnect: () => void;
+  onDisconnect: () => void;
 }) {
   return (
     <div className="terminal-panel">
