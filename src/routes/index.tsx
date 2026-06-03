@@ -278,7 +278,7 @@ function HomeScreen({ onAccepted }: { onAccepted: (name: string) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const submit = async () => {
+  const submit = () => {
     const name = value.trim();
     if (!name) return;
     if (name.length < 3) {
@@ -291,22 +291,12 @@ function HomeScreen({ onAccepted }: { onAccepted: (name: string) => void }) {
     }
     setBusy(true);
     setError(null);
-    try {
-      const res = await reserveUsernameSecure({ data: { username: name } });
-      if (!res.ok) {
-        if (res.reason === "taken") {
-          setError("Name already exists! Please choose a unique name.");
-          return;
-        }
-        onAccepted(name);
-        return;
-      }
-      onAccepted(name);
-    } catch {
-      onAccepted(name);
-    } finally {
-      setBusy(false);
-    }
+    // Fire reservation in the background — don't block the user on a
+    // serverless cold start. The local registry already prevents same-device
+    // collisions; the server reservation is best-effort de-dup.
+    reserveUsernameSecure({ data: { username: name } }).catch(() => {});
+    onAccepted(name);
+    setBusy(false);
   };
 
   return (
