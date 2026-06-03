@@ -388,13 +388,30 @@ function MenuScreen({
         <MusicTrackPicker />
       </div>
 
-      <div className="mt-6 flex justify-center">
+      <div className="mt-6 flex flex-col items-center gap-2">
         <button
           onClick={onConnect}
           className="px-4 py-2 rounded border border-[#BF00FF]/50 text-[#BF00FF] font-mono uppercase tracking-widest text-xs hover:bg-[rgba(191,0,255,0.1)] hover:shadow-[0_0_15px_#BF00FF] transition"
         >
           {walletAddress ? `⬡ Wallet: ${shortAddr(walletAddress)}` : "⬡ Connect Wallet"}
         </button>
+        {walletAddress && (
+          <button
+            onClick={() => {
+              sfx.click();
+              // Clear wallet state from app; browser extension disconnect is manual
+              if (typeof window !== "undefined") {
+                localStorage.removeItem("wagmi.store");
+                localStorage.removeItem("wagmi.wallet");
+                localStorage.removeItem("wagmi.connected");
+              }
+              window.location.reload();
+            }}
+            className="px-3 py-1 rounded border border-[#ff5577]/50 text-[#ff5577] font-mono uppercase tracking-widest text-[10px] hover:bg-[rgba(255,85,119,0.1)] hover:shadow-[0_0_10px_#ff5577] transition"
+          >
+            Disconnect Wallet
+          </button>
+        )}
       </div>
 
       <div className="mt-10 text-center text-[11px] opacity-60 text-[#BF00FF]">
